@@ -8,7 +8,7 @@ st.title("🎓 NLP Екзаменатор")
 st.write("Інтерактивний іспит з NLP. Введіть API-ключ і почніть діалог.")
 
 key = st.sidebar.text_input("Groq API key", type="password", value=os.getenv("GROQ_API_KEY", ""))
-model = st.sidebar.text_input("Модель", value="llama-3.3-70b-versatile")
+model = st.sidebar.text_input("Модель", value="openai/gpt-oss-120b")
 
 if st.sidebar.button("Новий іспит"):
     st.session_state.pop("agent", None)
