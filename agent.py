@@ -6,12 +6,21 @@ from tools import ExamTools
 
 SYSTEM = """
 Ти екзаменатор з NLP. Спілкуйся українською, коротко та зрозуміло.
-Спочатку запитай ім'я та email студента. Перевір їх через `start_exam`. Якщо студент не знайдений, попроси правильні дані.
-Отримуй теми через `get_next_topic`. Став по одному запитанню та чекай відповіді. Якщо потрібно, постав до двох уточнювальних запитань. Не повторюйся і не переходь до наступної теми без відповіді студента, якщо він не відмовився відповідати.
-Після всіх тем вистав оцінку від 0 до 10, коротко поясни її та дай рекомендації.
-Виклич `end_exam`, щоб зберегти результат та історію іспиту.
-Під час виклику end_exam передавай тільки email та score. Score має бути числом від 0 до 10, не рядком. Історію формує програма.
-Не вигадуй відповіді студента.
+
+1. Запитай ім'я та email, перевір через start_exam.
+2. Отримуй теми через get_next_topic.
+3. Став по одному основному запитанню на тему.
+4. За потреби постав до двох уточнювальних запитань.
+5. Після завершення теми один раз виклич record_topic_result.
+6. Правильна відповідь — correct=true, неправильна або
+   "не знаю" після уточнень — correct=false.
+7. Не повторюй завершені теми та не переходь далі,
+   поки не записаний результат поточної теми.
+8. Коли теми закінчаться, отримай оцінку з Python,
+   поясни результат і дай рекомендації.
+9. Виклич end_exam для збереження результату.
+
+Не вигадуй відповіді та оцінки. Підсумковий бал обчислює Python.
 """
 
 SCHEMAS = [
@@ -25,12 +34,20 @@ SCHEMAS = [
     }},
     {"type": "function", "function": {
         "name": "get_next_topic",
-        "description": "Отримати наступну тему або NO_MORE_TOPICS",
+        "description": "Отримати наступну тему",
         "parameters": {"type": "object", "properties": {}}
     }},
     {"type": "function", "function": {
+        "name": "record_topic_result",
+        "description": "Записати результат теми",
+        "parameters": {"type": "object", "properties": {
+            "topic": {"type": "string"},
+            "correct": {"type": "boolean"}
+        }, "required": ["topic", "correct"]}
+    }},
+    {"type": "function", "function": {
         "name": "end_exam",
-        "description": "Зберегти оцінку та історію іспиту",
+        "description": "Зберегти результат іспиту",
         "parameters": {"type": "object", "properties": {
             "email": {"type": "string"},
             "score": {"type": "number"}
@@ -94,22 +111,16 @@ class ExaminerAgent:
                     elif name == "get_next_topic":
                         result = self.tools.get_next_topic()
 
+                    elif name == "record_topic_result":
+                        result = self.tools.record_topic_result(**args)
+
                     elif name == "end_exam":
-                        score = float(args["score"])
-
-                        if not 0 <= score <= 10:
-                            raise ValueError("Оцінка має бути від 0 до 10")
-
-                        self._record("tool_call", "end_exam")
-
+                        score = self.tools.calculate_score()
                         self.tools.end_exam(
-                            args["email"],
-                            score,
-                            self.history.copy()
+                            args["email"], score, self.history.copy()
                         )
-
                         self.finished = True
-                        result = "Іспит успішно збережено"
+                        result = {"status": "success", "score": score}
 
                     else:
                         result = {"error": "Невідомий інструмент"}
@@ -117,8 +128,7 @@ class ExaminerAgent:
                 except Exception as exc:
                     result = {"error": str(exc)}
 
-                if name != "end_exam":
-                    self._record("tool_call", f"{name}: {result}")
+                self._record("tool_call", f"{name}: {result}")
 
                 self.messages.append({
                     "role": "tool",
